@@ -4,14 +4,13 @@ use itertools::Itertools;
 
 const STAR_SIZE: usize = 12;
 
-
 const UPPER_BOUND: usize = 42;
 const LOWER_BOUND: usize = 0;
 
 
 fn main() {
-    
-    coner_search();
+    // line_search();
+    // coner_search();
 }
 
 fn line_search(){
@@ -51,65 +50,26 @@ fn coner_search() {
         original_star[i] = i + 1;
     }
 
-    let star = [0; STAR_SIZE];
+    let star = original_star;
 
     let mut results = Vec::new();
 
     shuffle_corners(star, 0, &mut results);
 
-    let unique_results = results.into_iter().unique().collect::<Vec<_>>();
+    let mut unique_results = results.into_iter().unique().collect::<Vec<_>>();
 
-    let (sender, reciver) = mpsc::channel();
+    unique_results.sort_by(|a, b| {
+        let ch_a = get_changed_nodes(a, &original_star);
+        let ch_b = get_changed_nodes(b, &original_star);
 
-    let mut handles = Vec::new();
+        ch_a.cmp(&ch_b)
+    });
+
     for result in unique_results {
-        
-        let sender_clone = sender.clone();
-        let star = result;
+        println!("Checking: {:?}", result);
 
-        let handle = thread::spawn(move || {
-            shuffle_corner_lines(star, 0, &original_star, sender_clone);
-        });
-
-        handles.push(handle);
+        shuffle_corner_lines(result, 0, &original_star);
     }
-
-    
-    let mut best = star;
-    let mut changed_of_best = STAR_SIZE + 1;
-
-    loop {
-        let mut done = true;
-        for handle in handles.iter() {
-            if !handle.is_finished() {
-                done = false;
-            }
-        }
-        
-        loop {
-            let res = reciver.try_recv();
-            if res.is_ok() {
-                let (recv_star, changed) = res.unwrap();
-
-                if changed < changed_of_best {
-                    best = recv_star;
-                    changed_of_best = changed;
-                }
-            }
-            else {
-                break;
-            }
-        }
-
-        if done {
-            break;
-        }
-    }
-
-    if changed_of_best != STAR_SIZE + 1 {
-        println!("Best: {:?}", best);
-    }
-    
 }
 
 fn shuffle_star(mut star: [usize; STAR_SIZE], current: usize, max_depth: usize){
@@ -139,7 +99,7 @@ fn shuffle_corners(mut star: [usize; STAR_SIZE], corner_index: usize, results: &
 
     for i in LOWER_BOUND..UPPER_BOUND {
 
-        star[corner_indices[corner_index]] = i;
+        star[corner_indices[corner_index] - 1] = i;
 
         if check_corners(star){
             println!("CORNERS: {:?}", star);
@@ -147,13 +107,13 @@ fn shuffle_corners(mut star: [usize; STAR_SIZE], corner_index: usize, results: &
             results.push(star);
         }
 
-        if corner_index < 3 {
+        if corner_index < 5 {
             shuffle_corners(star, corner_index + 1, results);
         }
     }
 }
 
-fn shuffle_corner_lines(mut star: [usize; STAR_SIZE], inner_index: usize, original_star: &[usize], sender: Sender<([usize; STAR_SIZE], usize)>){
+fn shuffle_corner_lines(mut star: [usize; STAR_SIZE], inner_index: usize, original_star: &[usize]){
     let innner_indices = [0, 5, 6, 7, 8, 10];
 
     for i in LOWER_BOUND..UPPER_BOUND {
@@ -161,14 +121,12 @@ fn shuffle_corner_lines(mut star: [usize; STAR_SIZE], inner_index: usize, origin
         star[innner_indices[inner_index]] = i;
 
         if check_lines(star){
-            println!("CORNERS AND LINES: {:?}", star);
-
-            let changed = get_changed_nodes(star, original_star);
-            sender.send((star, changed));
+            let changed = get_changed_nodes(&star, original_star);
+            println!("CORNERS AND LINES: {:?} {:?}", star, changed);
         }
 
-        if inner_index < 4 {
-            shuffle_corner_lines(star, inner_index + 1, original_star, sender.clone());
+        if inner_index < 5 {
+            shuffle_corner_lines(star, inner_index + 1, original_star);
         }
     }
 }
@@ -189,10 +147,10 @@ fn check_lines(star: [usize; STAR_SIZE]) -> bool {
 
 const CORNER_SUM: usize = 42;
 fn check_corners(star: [usize; STAR_SIZE]) -> bool {
-    star[1] + star[4] + star[11] + star[9] + star[3] + star[2] == CORNER_SUM
+    star[1 - 1] + star[4 - 1] + star[11 - 1] + star[9 - 1] + star[3 - 1] + star[2 - 1] == CORNER_SUM
 }
 
-fn get_changed_nodes(star: [usize; STAR_SIZE], original_star: &[usize]) -> usize {
+fn get_changed_nodes(star: &[usize], original_star: &[usize]) -> usize {
 
     let mut changed = 0;
     for (i, node) in star.iter().enumerate() {
